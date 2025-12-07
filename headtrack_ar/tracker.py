@@ -206,6 +206,9 @@ class HeadTracker:
                     
                     head_id = self._assign_head_id(head, int(fx), int(fy))
                     
+                    # Safely get or create state (defaultdict should handle this, but be explicit)
+                    if head_id not in self.smoothing_states:
+                        self.smoothing_states[head_id] = {'x': None, 'y': None}
                     state = self.smoothing_states[head_id]
                     
                     if state['x'] is None or state['y'] is None:
@@ -229,16 +232,26 @@ class HeadTracker:
                     logger.warning(f"Error smoothing head: {e}, using original")
                     smoothed_heads.append(head)
             
-            # Clean up old smoothing states
+            # Clean up old smoothing states (only remove states that are not in current active heads)
+            # Don't remove states we just created in this iteration
             try:
-                active_ids = set(
-                    self._assign_head_id(h, *h.forehead_point)
-                    for h in heads
-                    if h and hasattr(h, 'forehead_point') and h.forehead_point
-                )
-                self.smoothing_states = {
-                    k: v for k, v in self.smoothing_states.items() if k in active_ids
-                }
+                active_ids = set()
+                for h in heads:
+                    if h and hasattr(h, 'forehead_point') and h.forehead_point:
+                        try:
+                            fx, fy = h.forehead_point
+                            if isinstance(fx, (int, float)) and isinstance(fy, (int, float)):
+                                hid = self._assign_head_id(h, int(fx), int(fy))
+                                active_ids.add(hid)
+                        except Exception:
+                            continue
+                
+                # Only remove states that are not in active_ids
+                # Keep states that were just created in this iteration
+                keys_to_remove = [k for k in self.smoothing_states.keys() if k not in active_ids]
+                for key in keys_to_remove:
+                    del self.smoothing_states[key]
+                    
             except Exception as e:
                 logger.warning(f"Error cleaning up smoothing states: {e}")
             

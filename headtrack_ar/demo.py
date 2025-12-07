@@ -141,9 +141,16 @@ def main():
         
         frame_count = 0
         
-        print("\nControls:")
-        print("  Press 'q' to quit")
-        print("  Press 's' to save current frame\n")
+        print("\n" + "="*50)
+        print("Controls:")
+        print("  - Press 'q' or ESC to quit")
+        print("  - Press 's' to save current frame")
+        print("  - IMPORTANT: Click on the video window first to give it focus!")
+        print("  - Keyboard only works when the video window is active")
+        print("="*50 + "\n")
+        
+        # Create window first to ensure it's ready
+        cv2.namedWindow("HeadTrack AR Demo", cv2.WINDOW_NORMAL)
         
         for frame_info in tracker.run():
             try:
@@ -191,15 +198,43 @@ def main():
                 
                 frame_count += 1
                 
-                key = cv2.waitKey(1) & 0xFF
-                if key == ord('q'):
+                # Use waitKey with longer delay (30ms) for better keyboard response
+                # Also check for window close event
+                # Note: On macOS, window must be in focus for keys to work
+                try:
+                    # Check if window still exists and is visible
+                    window_prop = cv2.getWindowProperty("HeadTrack AR Demo", cv2.WND_PROP_VISIBLE)
+                    if window_prop < 1:
+                        logger.info("Window closed by user")
+                        break
+                except cv2.error:
+                    logger.info("Window was closed")
+                    break
+                
+                key = cv2.waitKey(30) & 0xFF
+                
+                # Process keyboard input
+                # Check for 'q', 'Q', or ESC (27)
+                if key == ord('q') or key == ord('Q') or key == 27:
                     logger.info("Quit requested by user")
                     break
-                elif key == ord('s'):
+                elif key == ord('s') or key == ord('S'):
                     try:
                         filename = f"frame_{frame_count:06d}.jpg"
                         cv2.imwrite(filename, frame)
                         logger.info(f"Saved frame to {filename}")
+                        # Show confirmation on frame
+                        cv2.putText(
+                            frame,
+                            f"Saved: {filename}",
+                            (10, 90),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.6,
+                            (0, 255, 0),
+                            2
+                        )
+                        cv2.imshow("HeadTrack AR Demo", frame)
+                        cv2.waitKey(500)  # Show message for 500ms
                     except Exception as e:
                         logger.error(f"Error saving frame: {e}")
                         
