@@ -146,42 +146,71 @@ def main():
         print("  Press 's' to save current frame\n")
         
         for frame_info in tracker.run():
-            frame = frame_info.frame
-            
-            head_count = len(frame_info.heads)
-            info_text = f"Heads detected: {head_count}"
-            cv2.putText(
-                frame,
-                info_text,
-                (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (255, 255, 255),
-                2
-            )
-            
-            fps_text = f"Frame: {frame_count}"
-            cv2.putText(
-                frame,
-                fps_text,
-                (10, 60),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (255, 255, 255),
-                2
-            )
-            
-            cv2.imshow("HeadTrack AR Demo", frame)
-            frame_count += 1
-            
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                logger.info("Quit requested by user")
+            try:
+                if frame_info is None:
+                    logger.warning("Received None frame_info, skipping")
+                    continue
+                
+                frame = frame_info.frame
+                if frame is None:
+                    logger.warning("Frame is None, skipping")
+                    continue
+                
+                head_count = len(frame_info.heads) if frame_info.heads else 0
+                info_text = f"Heads detected: {head_count}"
+                
+                try:
+                    cv2.putText(
+                        frame,
+                        info_text,
+                        (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (255, 255, 255),
+                        2
+                    )
+                    
+                    fps_text = f"Frame: {frame_count}"
+                    cv2.putText(
+                        frame,
+                        fps_text,
+                        (10, 60),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (255, 255, 255),
+                        2
+                    )
+                except Exception as e:
+                    logger.warning(f"Error drawing text on frame: {e}")
+                
+                try:
+                    cv2.imshow("HeadTrack AR Demo", frame)
+                except Exception as e:
+                    logger.error(f"Error displaying frame: {e}")
+                    break
+                
+                frame_count += 1
+                
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
+                    logger.info("Quit requested by user")
+                    break
+                elif key == ord('s'):
+                    try:
+                        filename = f"frame_{frame_count:06d}.jpg"
+                        cv2.imwrite(filename, frame)
+                        logger.info(f"Saved frame to {filename}")
+                    except Exception as e:
+                        logger.error(f"Error saving frame: {e}")
+                        
+            except KeyboardInterrupt:
+                logger.info("Interrupted by user during frame processing")
                 break
-            elif key == ord('s'):
-                filename = f"frame_{frame_count:06d}.jpg"
-                cv2.imwrite(filename, frame)
-                logger.info(f"Saved frame to {filename}")
+            except Exception as e:
+                logger.error(f"Error processing frame in demo: {e}", exc_info=True)
+                # Continue processing instead of crashing
+                frame_count += 1
+                continue
         
         tracker.release()
         cv2.destroyAllWindows()

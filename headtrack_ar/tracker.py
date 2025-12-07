@@ -69,18 +69,35 @@ class HeadTracker:
         frame_count = 0
         
         while True:
-            frame = self.video_source.read()
-            if frame is None:
-                logger.warning("No more frames available")
+            try:
+                frame = self.video_source.read()
+                if frame is None:
+                    logger.warning("No more frames available")
+                    break
+                
+                frame_info = self.process_frame(frame)
+                frame_count += 1
+                
+                if frame_count % 30 == 0:
+                    logger.debug(f"Processed {frame_count} frames")
+                
+                yield frame_info
+                
+            except KeyboardInterrupt:
+                logger.info("Interrupted by user")
                 break
-            
-            frame_info = self.process_frame(frame)
-            frame_count += 1
-            
-            if frame_count % 30 == 0:
-                logger.debug(f"Processed {frame_count} frames")
-            
-            yield frame_info
+            except Exception as e:
+                logger.error(f"Error processing frame {frame_count}: {e}", exc_info=True)
+                # Continue processing instead of crashing
+                frame_count += 1
+                # Yield an empty frame info to keep the loop going
+                try:
+                    empty_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+                    yield FrameInfo(frame=empty_frame, raw_frame=empty_frame, heads=[])
+                except Exception:
+                    # If even this fails, break the loop
+                    logger.error("Fatal error, breaking loop")
+                    break
     
     def process_frame(self, frame: np.ndarray) -> FrameInfo:
         """Process a single frame: detect heads, smooth coordinates, draw overlay.
@@ -91,29 +108,63 @@ class HeadTracker:
         Returns:
             FrameInfo containing processed frame and head information.
         """
-        if frame is None or frame.size == 0:
-            logger.warning("Empty frame provided")
-            return FrameInfo(frame=frame, raw_frame=frame, heads=[])
-        
-        raw_frame = frame.copy() if self.config.draw_overlay else None
-        
-        heads = self.detector.detect(frame)
-        
-        if self.config.smoothing_alpha is not None:
-            heads = self._apply_smoothing(heads)
-        
-        if self.config.draw_overlay:
-            frame = draw_overlay(
-                frame,
-                [head.forehead_point for head in heads],
-                config=self.config.overlay_config
+        try:
+            if frame is None or frame.size == 0:
+                logger.warning("Empty frame provided")
+                empty_frame = np.zeros((480, 640, 3), dtype=np.uint8) if frame is None else frame
+                return FrameInfo(frame=empty_frame, raw_frame=empty_frame, heads=[])
+            
+            raw_frame = frame.copy() if self.config.draw_overlay else None
+            
+            # Safely detect heads - this should always return a list, never None
+            if self.detector is None:
+                logger.error("Detector not initialized")
+                return FrameInfo(frame=frame, raw_frame=raw_frame, heads=[])
+            
+            heads = self.detector.detect(frame)
+            
+            # Ensure heads is always a list
+            if heads is None:
+                logger.warning("Detector returned None, using empty list")
+                heads = []
+            
+            # Apply smoothing if enabled
+            if self.config.smoothing_alpha is not None and heads:
+                try:
+                    heads = self._apply_smoothing(heads)
+                except Exception as e:
+                    logger.warning(f"Error applying smoothing: {e}, using unsmoothed heads")
+                    # Continue with unsmoothed heads
+            
+            # Draw overlay if enabled
+            if self.config.draw_overlay:
+                try:
+                    forehead_points = [head.forehead_point for head in heads if head.forehead_point]
+                    frame = draw_overlay(
+                        frame,
+                        forehead_points,
+                        config=self.config.overlay_config
+                    )
+                except Exception as e:
+                    logger.warning(f"Error drawing overlay: {e}")
+                    # Continue without overlay
+            
+            return FrameInfo(
+                frame=frame,
+                raw_frame=raw_frame,
+                heads=heads
             )
-        
-        return FrameInfo(
-            frame=frame,
-            raw_frame=raw_frame,
-            heads=heads
-        )
+            
+        except Exception as e:
+            logger.error(f"Unexpected error in process_frame: {e}", exc_info=True)
+            # Return a safe fallback frame info
+            try:
+                fallback_frame = frame.copy() if frame is not None else np.zeros((480, 640, 3), dtype=np.uint8)
+                return FrameInfo(frame=fallback_frame, raw_frame=fallback_frame, heads=[])
+            except Exception:
+                # Ultimate fallback
+                empty_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+                return FrameInfo(frame=empty_frame, raw_frame=empty_frame, heads=[])
     
     def _apply_smoothing(self, heads: list[HeadInfo]) -> list[HeadInfo]:
         """Apply exponential moving average smoothing to forehead points.
@@ -130,34 +181,70 @@ class HeadTracker:
         smoothed_heads = []
         alpha = self.config.smoothing_alpha
         
-        for head in heads:
-            fx, fy = head.forehead_point
-            
-            head_id = self._assign_head_id(head, fx, fy)
-            
-            state = self.smoothing_states[head_id]
-            
-            if state['x'] is None or state['y'] is None:
-                state['x'] = float(fx)
-                state['y'] = float(fy)
-            else:
-                state['x'] = alpha * fx + (1 - alpha) * state['x']
-                state['y'] = alpha * fy + (1 - alpha) * state['y']
-            
-            smoothed_point = (int(state['x']), int(state['y']))
-            
-            smoothed_head = HeadInfo(
-                bbox=head.bbox,
-                forehead_point=smoothed_point,
-                landmarks=head.landmarks,
-                confidence=head.confidence
-            )
-            smoothed_heads.append(smoothed_head)
+        if alpha is None:
+            return heads
         
-        active_ids = set(self._assign_head_id(h, *h.forehead_point) for h in heads)
-        self.smoothing_states = {
-            k: v for k, v in self.smoothing_states.items() if k in active_ids
-        }
+        try:
+            for head in heads:
+                if head is None:
+                    continue
+                
+                # Safely get forehead point
+                if not hasattr(head, 'forehead_point') or head.forehead_point is None:
+                    logger.warning("Head missing forehead_point, skipping smoothing")
+                    smoothed_heads.append(head)
+                    continue
+                
+                try:
+                    fx, fy = head.forehead_point
+                    
+                    # Validate coordinates
+                    if not isinstance(fx, (int, float)) or not isinstance(fy, (int, float)):
+                        logger.warning(f"Invalid forehead point coordinates: ({fx}, {fy})")
+                        smoothed_heads.append(head)
+                        continue
+                    
+                    head_id = self._assign_head_id(head, int(fx), int(fy))
+                    
+                    state = self.smoothing_states[head_id]
+                    
+                    if state['x'] is None or state['y'] is None:
+                        state['x'] = float(fx)
+                        state['y'] = float(fy)
+                    else:
+                        state['x'] = alpha * fx + (1 - alpha) * state['x']
+                        state['y'] = alpha * fy + (1 - alpha) * state['y']
+                    
+                    smoothed_point = (int(state['x']), int(state['y']))
+                    
+                    smoothed_head = HeadInfo(
+                        bbox=head.bbox,
+                        forehead_point=smoothed_point,
+                        landmarks=head.landmarks,
+                        confidence=head.confidence
+                    )
+                    smoothed_heads.append(smoothed_head)
+                    
+                except (TypeError, ValueError, AttributeError) as e:
+                    logger.warning(f"Error smoothing head: {e}, using original")
+                    smoothed_heads.append(head)
+            
+            # Clean up old smoothing states
+            try:
+                active_ids = set(
+                    self._assign_head_id(h, *h.forehead_point)
+                    for h in heads
+                    if h and hasattr(h, 'forehead_point') and h.forehead_point
+                )
+                self.smoothing_states = {
+                    k: v for k, v in self.smoothing_states.items() if k in active_ids
+                }
+            except Exception as e:
+                logger.warning(f"Error cleaning up smoothing states: {e}")
+            
+        except Exception as e:
+            logger.error(f"Unexpected error in _apply_smoothing: {e}", exc_info=True)
+            return heads  # Return original heads on error
         
         return smoothed_heads
     
