@@ -48,7 +48,8 @@ class HeadTracker:
             )
             
             self.detector = FaceDetector(
-                min_detection_confidence=config.min_detection_confidence
+                min_detection_confidence=config.min_detection_confidence,
+                model_selection=config.model_selection
             )
             
             logger.info("HeadTracker initialized successfully")

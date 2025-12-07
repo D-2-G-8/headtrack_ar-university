@@ -32,13 +32,17 @@ class TrackerConfig:
         smoothing_alpha: Alpha parameter for exponential moving average smoothing (0.0 to 1.0).
                         Higher values mean less smoothing. Set to None to disable smoothing.
         min_detection_confidence: Minimum confidence for face detection (0.0 to 1.0).
+                                 Lower values = more sensitive but may have false positives.
+        model_selection: MediaPipe face detection model selection (0=short-range up to 2m, 
+                        1=full-range up to 5m). Use 1 for better detection at distance.
     """
     source: Union[int, str] = 0
     target_resolution: Optional[tuple[int, int]] = (640, 480)
     draw_overlay: bool = True
     overlay_config: Optional[OverlayConfig] = None
     smoothing_alpha: Optional[float] = 0.7
-    min_detection_confidence: float = 0.5
+    min_detection_confidence: float = 0.4  # Lowered for better sensitivity
+    model_selection: int = 1  # Use full-range model by default (better for distance)
     
     def __post_init__(self):
         """Initialize overlay config if not provided."""

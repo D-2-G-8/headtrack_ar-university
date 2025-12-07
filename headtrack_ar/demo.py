@@ -73,6 +73,21 @@ def parse_args():
         help='Marker thickness in pixels (default: 2)'
     )
     
+    parser.add_argument(
+        '--model',
+        type=int,
+        default=1,
+        choices=[0, 1],
+        help='Face detection model: 0=short-range (0.5-2m), 1=full-range (0.5-5m) (default: 1)'
+    )
+    
+    parser.add_argument(
+        '--confidence',
+        type=float,
+        default=0.4,
+        help='Minimum detection confidence (0.0-1.0). Lower = more sensitive (default: 0.4)'
+    )
+    
     return parser.parse_args()
 
 
@@ -128,13 +143,17 @@ def main():
         source=source,
         target_resolution=(args.width, args.height),
         draw_overlay=not args.no_overlay,
-        overlay_config=overlay_config
+        overlay_config=overlay_config,
+        model_selection=args.model,
+        min_detection_confidence=args.confidence
     )
     
     logger.info(f"Starting head tracking demo")
     logger.info(f"Source: {source}")
     logger.info(f"Resolution: {args.width}x{args.height}")
     logger.info(f"Overlay: {config.draw_overlay}")
+    logger.info(f"Detection model: {'full-range (0.5-5m)' if args.model == 1 else 'short-range (0.5-2m)'}")
+    logger.info(f"Min confidence: {args.confidence}")
     
     try:
         tracker = HeadTracker(config)

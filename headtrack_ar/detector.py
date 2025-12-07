@@ -21,22 +21,25 @@ class FaceDetector:
     faces and extract facial landmarks for forehead point calculation.
     """
     
-    def __init__(self, min_detection_confidence: float = 0.5):
+    def __init__(self, min_detection_confidence: float = 0.5, model_selection: int = 1):
         """Initialize face detector.
         
         Args:
             min_detection_confidence: Minimum confidence threshold for face detection.
+            model_selection: Model selection (0=short-range up to 2m, 1=full-range up to 5m).
             
         Raises:
             RuntimeError: If MediaPipe models cannot be initialized.
         """
         self.min_detection_confidence = min_detection_confidence
+        self.model_selection = model_selection
         
         try:
             # Initialize MediaPipe face detection
+            # model_selection: 0 for short-range (0.5-2m), 1 for full-range (0.5-5m)
             self.mp_face_detection = mp.solutions.face_detection
             self.face_detection = self.mp_face_detection.FaceDetection(
-                model_selection=0,  # 0 for short-range, 1 for full-range
+                model_selection=model_selection,
                 min_detection_confidence=min_detection_confidence
             )
             
