@@ -71,8 +71,24 @@ class FaceDetector:
             logger.warning("Empty frame provided to detector")
             return []
         
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        height, width = frame.shape[:2]
+        # Validate frame shape (should be 2D or 3D array with valid dimensions)
+        try:
+            if len(frame.shape) < 2 or len(frame.shape) > 3:
+                logger.warning(f"Invalid frame shape: {frame.shape}")
+                return []
+            if len(frame.shape) == 3 and frame.shape[2] != 3:
+                logger.warning(f"Invalid frame shape (expected 3 channels): {frame.shape}")
+                return []
+        except (AttributeError, TypeError):
+            logger.warning("Invalid frame type or shape")
+            return []
+        
+        try:
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            height, width = frame.shape[:2]
+        except cv2.error as e:
+            logger.warning(f"Error converting frame color space: {e}")
+            return []
         
         heads = []
         
