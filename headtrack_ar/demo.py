@@ -1,0 +1,201 @@
+#!/usr/bin/env python3
+"""
+Command-line demo script for headtrack_ar package.
+"""
+
+import argparse
+import logging
+import sys
+from pathlib import Path
+
+import cv2
+
+from headtrack_ar import HeadTracker, TrackerConfig
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+def parse_args():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description='Head tracking AR demo - Track human heads and display AR markers'
+    )
+    
+    parser.add_argument(
+        '--source',
+        type=str,
+        default='0',
+        help='Video source: camera index (e.g., 0) or path to video file'
+    )
+    
+    parser.add_argument(
+        '--width',
+        type=int,
+        default=640,
+        help='Target frame width (default: 640)'
+    )
+    
+    parser.add_argument(
+        '--height',
+        type=int,
+        default=480,
+        help='Target frame height (default: 480)'
+    )
+    
+    parser.add_argument(
+        '--no-overlay',
+        action='store_true',
+        help='Disable overlay rendering'
+    )
+    
+    parser.add_argument(
+        '--color',
+        type=str,
+        default='green',
+        help='Marker color: green, red, blue, yellow (default: green)'
+    )
+    
+    parser.add_argument(
+        '--size',
+        type=int,
+        default=20,
+        help='Marker size in pixels (default: 20)'
+    )
+    
+    parser.add_argument(
+        '--thickness',
+        type=int,
+        default=2,
+        help='Marker thickness in pixels (default: 2)'
+    )
+    
+    return parser.parse_args()
+
+
+def parse_source(source_str: str):
+    """Parse source string to int or str."""
+    try:
+        return int(source_str)
+    except ValueError:
+        return source_str
+
+
+def parse_color(color_str: str) -> tuple[int, int, int]:
+    """Parse color string to BGR tuple."""
+    color_map = {
+        'green': (0, 255, 0),
+        'red': (0, 0, 255),
+        'blue': (255, 0, 0),
+        'yellow': (0, 255, 255),
+        'cyan': (255, 255, 0),
+        'magenta': (255, 0, 255),
+        'white': (255, 255, 255),
+    }
+    
+    color_lower = color_str.lower()
+    if color_lower not in color_map:
+        logger.warning(f"Unknown color '{color_str}', using green")
+        return color_map['green']
+    
+    return color_map[color_lower]
+
+
+def main():
+    """Main demo function."""
+    args = parse_args()
+    
+    source = parse_source(args.source)
+    
+    if isinstance(source, str):
+        if not Path(source).exists():
+            logger.error(f"Video file not found: {source}")
+            sys.exit(1)
+    
+    color = parse_color(args.color)
+    
+    from headtrack_ar.config import OverlayConfig
+    overlay_config = OverlayConfig(
+        color=color,
+        size=args.size,
+        thickness=args.thickness
+    )
+    
+    config = TrackerConfig(
+        source=source,
+        target_resolution=(args.width, args.height),
+        draw_overlay=not args.no_overlay,
+        overlay_config=overlay_config
+    )
+    
+    logger.info(f"Starting head tracking demo")
+    logger.info(f"Source: {source}")
+    logger.info(f"Resolution: {args.width}x{args.height}")
+    logger.info(f"Overlay: {config.draw_overlay}")
+    
+    try:
+        tracker = HeadTracker(config)
+        
+        frame_count = 0
+        
+        print("\nControls:")
+        print("  Press 'q' to quit")
+        print("  Press 's' to save current frame\n")
+        
+        for frame_info in tracker.run():
+            frame = frame_info.frame
+            
+            head_count = len(frame_info.heads)
+            info_text = f"Heads detected: {head_count}"
+            cv2.putText(
+                frame,
+                info_text,
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (255, 255, 255),
+                2
+            )
+            
+            fps_text = f"Frame: {frame_count}"
+            cv2.putText(
+                frame,
+                fps_text,
+                (10, 60),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (255, 255, 255),
+                2
+            )
+            
+            cv2.imshow("HeadTrack AR Demo", frame)
+            frame_count += 1
+            
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                logger.info("Quit requested by user")
+                break
+            elif key == ord('s'):
+                filename = f"frame_{frame_count:06d}.jpg"
+                cv2.imwrite(filename, frame)
+                logger.info(f"Saved frame to {filename}")
+        
+        tracker.release()
+        cv2.destroyAllWindows()
+        
+        logger.info(f"Demo completed. Processed {frame_count} frames.")
+        
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"Error during demo: {e}", exc_info=True)
+        sys.exit(1)
+
+
+if __name__ == '__main__':
+    main()
+
