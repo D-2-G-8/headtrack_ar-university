@@ -21,7 +21,12 @@ class FaceDetector:
     faces and extract facial landmarks for forehead point calculation.
     """
     
-    def __init__(self, min_detection_confidence: float = 0.5, model_selection: int = 1):
+    def __init__(
+        self,
+        min_detection_confidence: float = 0.5,
+        model_selection: int = 1,
+        max_num_faces: int = 1
+    ):
         """Initialize face detector.
         
         Args:
@@ -33,21 +38,27 @@ class FaceDetector:
         """
         self.min_detection_confidence = min_detection_confidence
         self.model_selection = model_selection
+        self.max_num_faces = max_num_faces
         
         try:
             # Initialize MediaPipe face detection
             # model_selection: 0 for short-range (0.5-2m), 1 for full-range (0.5-5m)
             self.mp_face_detection = mp.solutions.face_detection
-            self.face_detection = self.mp_face_detection.FaceDetection(
-                model_selection=model_selection,
+            self.fd_short = self.mp_face_detection.FaceDetection(
+                model_selection=0,
                 min_detection_confidence=min_detection_confidence
             )
+            self.fd_full = self.mp_face_detection.FaceDetection(
+                model_selection=1,
+                min_detection_confidence=min_detection_confidence
+            )
+            self.face_detection = self.fd_full if model_selection == 1 else self.fd_short
             
             # Initialize MediaPipe face mesh for landmarks
             self.mp_face_mesh = mp.solutions.face_mesh
             self.face_mesh = self.mp_face_mesh.FaceMesh(
                 static_image_mode=False,
-                max_num_faces=10,
+                max_num_faces=max_num_faces,
                 refine_landmarks=True,
                 min_detection_confidence=min_detection_confidence,
                 min_tracking_confidence=0.5
@@ -123,8 +134,12 @@ class FaceDetector:
                         logger.warning(f"Error extracting landmarks: {e}")
                         landmarks_map = {}
                 
+                detections = detection_results.detections
+                if self.max_num_faces is not None:
+                    detections = detections[: max(1, int(self.max_num_faces))]
+                
                 # Process each detection
-                for idx, detection in enumerate(detection_results.detections):
+                for idx, detection in enumerate(detections):
                     try:
                         if detection is None:
                             continue
@@ -255,9 +270,12 @@ class FaceDetector:
     
     def release(self) -> None:
         """Release detector resources."""
-        if hasattr(self, 'face_detection'):
+        if hasattr(self, 'fd_short'):
+            self.fd_short.close()
+        if hasattr(self, 'fd_full'):
+            self.fd_full.close()
+        if hasattr(self, 'face_detection') and not hasattr(self, 'fd_short') and not hasattr(self, 'fd_full'):
             self.face_detection.close()
         if hasattr(self, 'face_mesh'):
             self.face_mesh.close()
         logger.info("Face detector released")
-

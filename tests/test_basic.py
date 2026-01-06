@@ -108,7 +108,7 @@ class TestTrackerConfig(unittest.TestCase):
         config = TrackerConfig()
         
         self.assertEqual(config.source, 0)
-        self.assertEqual(config.target_resolution, (640, 480))
+        self.assertIsNone(config.target_resolution)
         self.assertTrue(config.draw_overlay)
         self.assertIsNotNone(config.overlay_config)
         self.assertIsNotNone(config.smoothing_alpha)
@@ -215,4 +215,3 @@ class TestOverlayConfig(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
-

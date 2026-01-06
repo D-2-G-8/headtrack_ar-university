@@ -37,10 +37,6 @@ def draw_crosshair(
             logger.warning("Cannot draw crosshair on empty frame")
             return frame
         
-        if point is None or len(point) != 2:
-            logger.warning(f"Invalid point provided: {point}")
-            return frame
-        
         try:
             x, y = point
             x = int(x) if isinstance(x, (int, float)) else 0

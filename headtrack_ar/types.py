@@ -32,13 +32,16 @@ class FrameInfo:
         frame: Processed frame (numpy array in BGR format) with overlay if enabled.
         raw_frame: Original frame before processing (None if not preserved).
         heads: List of detected head information.
+        detected_count: Count of heads detected on the latest detection attempt.
     """
     frame: np.ndarray
     raw_frame: Optional[np.ndarray] = None
     heads: list[HeadInfo] = None
+    detected_count: Optional[int] = None
     
     def __post_init__(self):
         """Initialize heads list if not provided."""
         if self.heads is None:
             self.heads = []
-
+        if self.detected_count is None:
+            self.detected_count = len(self.heads)
